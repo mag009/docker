@@ -1,0 +1,64 @@
+- hosts: all
+  gather_facts: False
+  become: yes
+  tasks:
+    - raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+
+    - shell: curl -SsL https://get.docker.com | bash
+
+    - setup:
+
+    - apt:
+        name: ["docker-ce=5:18.09.5~3-0~ubuntu-{{ansible_distribution_release }}", "python-pip"]
+        update_cache: yes
+        state: present
+
+    - pip:
+        name: docker-py
+        state: present
+
+    - name: create folder /data/grafana and set owner id `472`
+      file:
+        path: /data/grafana
+        recurse: yes
+        owner: 472
+        state: directory
+
+    - name: Create docker network
+      docker_network:
+        name: test
+
+    - name: Start postgres container
+      docker_container:
+        cpu_quota: 50000 # require an int
+        hostname: postgres
+        image: postgres:9.6
+        name: postgres
+        network_mode: bridge
+        networks:
+          - name: test
+            aliases:
+              - postgres.test.local.a.b.c
+        volumes:
+          - /data/postgres:/var/lib/postgresql/data
+        env:
+          PGDATA: /var/lib/postgresql/data
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test123
+        state: started
+
+    - name: Start grafana container
+      docker_container:
+        image: grafana/grafana
+        name: grafana
+        hostname: grafana
+        network_mode: bridge
+        networks:
+          - name: test
+            aliases:
+              - grafana.test.local.a.b.c
+        volumes:
+          - /data/grafana:/var/lib/grafana
+        published_ports:
+          - "8765:3000"
+        state: started
